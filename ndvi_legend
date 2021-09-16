@@ -1,0 +1,89 @@
+var dataset = ee.ImageCollection('MODIS/MOD09GA_006_NDVI')
+                  .filter(ee.Filter.date('2021-08-01', '2021-09-01'));
+var colorized = dataset.select('NDVI');
+var colorizedVis = {
+  min: 0.0,
+  max: 1.0,
+  palette: [
+    'FFFFFF', 'CE7E45', 'DF923D', 'F1B555', 'FCD163', '99B718', '74A901',
+    '66A000', '529400', '3E8601', '207401', '056201', '004C00', '023B01',
+    '012E01', '011D01', '011301'
+  ],
+};
+
+var legend = ui.Panel({
+style: {
+position: 'bottom-left',
+padding: '8px 15px'
+}
+});
+
+var legendTitle = ui.Label({
+value: 'NDVI',
+style: {
+fontWeight: 'bold',
+fontSize: '12px',
+margin: '0 0 4px 0',
+padding: '0'
+}
+});
+
+legend.add(legendTitle);
+
+var lon = ee.Image.pixelLonLat().select('latitude');
+var gradient = lon.multiply((colorizedVis.max-colorizedVis.min)/100.0).add(colorizedVis.min);
+var legendImage = gradient.visualize(colorizedVis);
+
+var panel = ui.Panel({
+widgets: [
+ui.Label(colorizedVis['.max']),
+],
+});
+
+legend.add(panel);
+
+var thumbnail = ui.Thumbnail({
+image: legendImage,
+params: {bbox:'0,0,10,100', dimensions:'10x100'},
+style: {padding: '1px', position: 'bottom-center'}  
+});
+
+legend.add(thumbnail);
+
+var panel = ui.Panel({
+widgets: [
+ui.Label(colorizedVis['.min'])
+],
+});
+
+legend.add(panel);
+
+Map.add(legend);
+
+Map.setCenter(-7.03125, 31.0529339857, 2);
+Map.addLayer(colorized, colorizedVis, 'Colorized');
+
+var region = geometry; // ee.Geometry.Rectangle(minLng, minLat, maxLng, maxLat)
+
+var chart =
+    ui.Chart.image
+        .seriesByRegion({
+          imageCollection: dataset,
+          band: 'NDVI',
+          regions: region, // regions: ecoregions,
+          reducer: ee.Reducer.mean(),
+          scale: 500,
+          seriesProperty: 'label',
+          xProperty: 'system:time_start'
+        })
+        .setOptions({
+          title: 'Average NDVI Value by Date',
+          hAxis: {title: 'Date', titleTextStyle: {italic: false, bold: true}},
+          vAxis: {
+            title: 'NDVI (x1e4)',
+            titleTextStyle: {italic: false, bold: true}
+          },
+          lineWidth: 5,
+          colors: ['f0af07', '0f8755', '76b349'],
+        });
+print(chart);
