@@ -1,0 +1,124 @@
+var pt = ee.Geometry.Point([-36, -9]); // (lon, lat)
+
+Map.addLayer(pt);
+Map.centerObject(pt);
+
+var dataset = ee.ImageCollection("ECMWF/ERA5_LAND/HOURLY");
+
+var startDate = ee.Date('2014-10-01');
+var endDate = ee.Date('2014-10-10');
+var diff = endDate.difference(startDate, 'day');
+
+var precD = dataset.select('total_precipitation_hourly')
+                  .filterDate(startDate, endDate);
+
+var list_precD = precD.toList(dataset.size());
+
+var tempD = dataset.select('temperature_2m')
+                  .filterDate(startDate, endDate);
+
+var list_tempD = tempD.toList(dataset.size());
+
+var getPrecipitation = function(image) {
+
+  var value_precipit = ee.Image(image)
+    .reduceRegion(ee.Reducer.first(), pt)
+    .get('total_precipitation_hourly');
+  
+  var precipit_mm = ee.Number(value_precipit)
+    .multiply(ee.Number(1000)); //original values are in meters
+
+  var time = ee.Image(image).get('system:time_start');
+
+  return precipit_mm;
+};
+
+var getTemperature = function(image) {
+
+  var value_temp = ee.Image(image)
+    .reduceRegion(ee.Reducer.first(), pt)
+    .get('temperature_2m');
+  
+  var temp = ee.Number(value_temp)
+    .subtract(ee.Number(273.15)); //original values are in kelvin
+
+  var time = ee.Image(image).get('system:time_start');
+
+  // Return the time (in milliseconds since Jan 1, 1970) as a Date
+
+  return temp;
+};
+
+var precipit_list = list_precD.map(getPrecipitation);
+
+print("precipitation list", precipit_list);
+
+var temp_list = list_tempD.map(getTemperature);
+
+print("temperature list", temp_list);
+
+var allDates = ee.List(precD.aggregate_array('system:time_start'));
+
+var allDatesSimple = allDates.map(function(date){
+  return ee.Date(date).format().slice(0,10);
+  }).distinct();
+
+var len = precipit_list.size();
+
+var list = ee.List.sequence(0, len.subtract(1), 24);
+
+//print(list);
+
+var sum_precipit_list = list.map(function(ele){
+
+  var start = ee.Number(ele).int(); 
+  var end = ee.Number(ele).add(24).int(); 
+
+  var new_list = ee.List([]);
+  var element = ee.List(precipit_list.slice(start, end)).reduce(ee.Reducer.sum());
+
+  new_list = new_list.add(element);
+
+  return new_list;
+
+}).flatten();
+
+var mean_temp_list = list.map(function(ele){
+
+  var start = ee.Number(ele).int(); 
+  var end = ee.Number(ele).add(24).int(); 
+
+  var new_list = ee.List([]);
+  var element = ee.List(temp_list.slice(start, end)).reduce(ee.Reducer.mean());
+
+  new_list = new_list.add(element);
+
+  return new_list;
+
+}).flatten();
+
+//print(mean_temp_list);
+
+var paired = sum_precipit_list.zip(mean_temp_list);
+
+paired = allDatesSimple.zip(paired);
+
+print (paired);
+
+var myFeatures = ee.FeatureCollection(paired.map(function(el){
+  el = ee.List(el); // cast every element of the list
+  var geom = pt;
+  return ee.Feature(geom, {
+    'date': ee.String(el.get(0)),
+    'values':ee.List(el.get(1))
+  });
+}));
+
+//print(myFeatures);
+
+// Export features, specifying corresponding names.
+Export.table.toDrive(myFeatures,
+"hourly", //my task
+"GEE_Folder", //my export folder
+"hourly_data",  //file name
+"CSV");
