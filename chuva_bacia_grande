@@ -1,0 +1,99 @@
+var dataset = ee.ImageCollection('NOAA/GFS0P25')
+                  .filter(ee.Filter.date('2021-09-16', '2021-09-17'));
+var temperatureAboveGround = dataset.select('precipitable_water_entire_atmosphere');
+var visParams = {
+  min: 0,
+  max: 100,
+  palette: [  '000096','0064ff', '00b4ff', '33db80', '9beb4a',
+              'ffeb00', 'ffb300', 'ff6400', 'eb1e00', 'af0000'],
+};
+
+var legend = ui.Panel({
+style: {
+position: 'bottom-left',
+padding: '8px 15px'
+}
+});
+
+var legendTitle = ui.Label({
+value: 'Precipitable Water',
+style: {
+fontWeight: 'bold',
+fontSize: '12px',
+margin: '0 0 4px 0',
+padding: '0'
+}
+});
+
+legend.add(legendTitle);
+
+var lon = ee.Image.pixelLonLat().select('latitude');
+var gradient = lon.multiply((visParams.max-visParams.min)/100.0).add(visParams.min);
+var legendImage = gradient.visualize(visParams);
+
+var panel = ui.Panel({
+widgets: [
+ui.Label(visParams['max']),
+],
+});
+
+legend.add(panel);
+
+var thumbnail = ui.Thumbnail({
+image: legendImage,
+params: {bbox:'0,0,10,100', dimensions:'10x100'},
+style: {padding: '1px', position: 'bottom-center'}  
+});
+
+legend.add(thumbnail);
+
+var panel = ui.Panel({
+widgets: [
+ui.Label(visParams['min'])
+],
+});
+
+legend.add(panel);
+
+Map.add(legend);
+
+Map.setCenter(-36, -9, 3.0);
+Map.addLayer(temperatureAboveGround, visParams, 'Precipitable Water' );
+
+// var Bacia = ee.FeatureCollection("users/pedronobrejp/Grande");
+var outline = ee.Image().byte().paint({
+  featureCollection: Bacia,
+  color: 1,
+  width: 3
+});
+
+Map.addLayer(outline, {palette: ['red']}, 'Bacia do Rio Grande');
+
+//Map.addLayer(Bacia, {color: 'Red'}, 'Bacia do Rio Grande');
+
+var region = Bacia; // ee.Geometry.Rectangle(minLng, minLat, maxLng, maxLat)
+
+print('Painel de Avaliação');
+
+var chart =
+    ui.Chart.image
+        .seriesByRegion({
+          imageCollection: dataset,
+          band: 'precipitable_water_entire_atmosphere',
+          regions: region, // regions: ecoregions,
+          reducer: ee.Reducer.mean(),
+          scale: 500,
+          seriesProperty: 'label',
+          xProperty: 'system:time_start'
+        })
+        .setOptions({
+          title: 'Precipitable Water Average Value by Date',
+          hAxis: {title: 'Date', titleTextStyle: {italic: false, bold: true}},
+          vAxis: {
+            title: 'Precipitable Water (mm)',
+            titleTextStyle: {italic: false, bold: true}
+          },
+          lineWidth: 5,
+          colors: ['#3b07f0'],
+        });
+print(chart.setChartType('AreaChart'));
